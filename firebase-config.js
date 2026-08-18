@@ -12,7 +12,7 @@ const FIREBASE_CONFIG = {
   storageBucket: "fh6-wheelspin.firebasestorage.app",
   messagingSenderId: "436338309534",
   appId: "1:436338309534:web:1317453e5a54649ed57e8f"
-  measurementId: "G-1432369YJY"
+
 
 };
 
