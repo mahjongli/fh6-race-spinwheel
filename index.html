@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Horizon Roulette — FH6 Race Wheel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <p class="eyebrow">Horizon Festival &middot; Discover Japan</p>
+      <h1>Horizon Roulette</h1>
+      <p>Spin for a race, a class, and a build restriction — then see every Forza Horizon 6 car that qualifies. Share the room code so friends watching this page see the same spin.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+      <div class="roster-pill">Roster: <b id="rosterCount">0</b> cars &middot; <b id="raceCount">0</b> races &middot; official FH6 list</div>
+      <div class="roster-pill" id="syncPill" style="border-color:rgba(0,229,199,.35);">
+        <span id="syncDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#3a4150;margin-right:7px;"></span><span id="syncText">Connecting…</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="room-bar">
+    <span>Room:</span>
+    <input id="roomInput" type="text" maxlength="24" placeholder="e.g. friday-night">
+    <button id="roomJoinBtn">Join / Create</button>
+    <span class="you">Everyone in the same room sees the same spin &amp; votes.</span>
+  </div>
+
+  <div class="rig">
+    <div class="dial">
+      <span class="label">01 &mdash; Race</span>
+      <div class="wheelbox"><div class="pointer"></div><div class="wheel" id="wheelRace"><div class="hub"></div></div></div>
+      <div class="result" id="resRace">&mdash;</div>
+      <div class="warn" id="warnRace">All race options are off — enable at least one below.</div>
+    </div>
+    <div class="dial">
+      <span class="label">02 &mdash; Car Class</span>
+      <div class="wheelbox"><div class="pointer"></div><div class="wheel" id="wheelClass"><div class="hub"></div></div></div>
+      <div class="result" id="resClass">&mdash;</div>
+      <div class="warn" id="warnClass">All classes are off — enable at least one below.</div>
+    </div>
+    <div class="dial">
+      <span class="label">03 &mdash; Restriction</span>
+      <div class="wheelbox"><div class="pointer"></div><div class="wheel" id="wheelRestrict"><div class="hub"></div></div></div>
+      <div class="result" id="resRestrict">&mdash;</div>
+      <div class="warn" id="warnRestrict">All restriction options are off — enable at least one below.</div>
+    </div>
+  </div>
+
+  <div class="panels">
+    <details class="panel" open>
+      <summary>Filters — enable / disable wheel options</summary>
+      <div class="panel-body">
+        <details class="subpanel" open>
+          <summary>01 Race <span class="subcount" id="raceFilterCount"></span></summary>
+          <div class="subpanel-body" id="raceFilters"></div>
+        </details>
+        <details class="subpanel" open>
+          <summary>02 Car Class <span class="subcount" id="classFilterCount"></span></summary>
+          <div class="subpanel-body flat-items" id="classFilters"></div>
+        </details>
+        <details class="subpanel" open>
+          <summary>03 Restriction <span class="subcount" id="restrictFilterCount"></span></summary>
+          <div class="subpanel-body" id="restrictFilters"></div>
+        </details>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>Rules</summary>
+      <div class="panel-body">
+        <div class="rule-row">
+          <label class="rule-main"><input type="checkbox" id="rNoDupMaster"> No duplicate results (don't repeat last spin)</label>
+          <div class="rule-subs">
+            <label><input type="checkbox" id="rNoDupRace"> Race</label>
+            <label><input type="checkbox" id="rNoDupClass"> Class</label>
+            <label><input type="checkbox" id="rNoDupRestrict"> Restriction</label>
+          </div>
+        </div>
+        <div class="rule-row">
+          <label class="rule-main"><input type="checkbox" id="rAvailable"> Only show available cars</label>
+          <div class="rule-hint">Excludes cars locked behind Car Pass / paid DLC / preorder-only content in this roster.</div>
+        </div>
+        <div class="rule-row">
+          <label class="rule-main"><input type="checkbox" id="rUpgrade"> Show upgrade candidates</label>
+          <div class="rule-hint">Adds a second section listing cars that meet the restriction but not the spun class at stock — they may reach it once upgraded.</div>
+        </div>
+        <div class="rule-row">
+          <div class="rule-main" style="cursor:default;">Car selection</div>
+          <div class="radio-set">
+            <label><input type="radio" name="carMode" value="list" checked><span><span class="opt-title">Show the full list</span><span class="opt-sub">Just browse every qualifying car.</span></span></label>
+            <label><input type="radio" name="carMode" value="spec"><span><span class="opt-title">Spec racing</span><span class="opt-sub">One random qualifying car is auto-assigned — everyone uses it.</span></span></label>
+            <label><input type="radio" name="carMode" value="vote"><span><span class="opt-title">Player vote</span><span class="opt-sub">Everyone in the room votes from the qualifying pool; highest vote wins.</span></span></label>
+          </div>
+          <div class="rule-hint">If nothing fully qualifies, the spin automatically rerolls — unless "show upgrade candidates" is on and at least one upgrade candidate exists, in which case it stops and shows those instead.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="spinbar">
+    <button id="spinBtn">Spin the wheels</button>
+    <div id="spinNote"></div>
+  </div>
+
+  <div class="ticket" id="ticket">
+    <div class="row">
+      <div class="field"><div class="k">Race</div><div class="v cyan" id="tRace">&mdash;</div><div class="k" id="tRaceMeta" style="text-transform:none;letter-spacing:0;margin-top:2px;"></div></div>
+      <div class="field"><div class="k">Class</div><div class="v amber" id="tClass">&mdash;</div></div>
+      <div class="field"><div class="k">Restriction</div><div class="v magenta" id="tRestrict">&mdash;</div></div>
+      <div class="field count" id="tCount"></div>
+    </div>
+
+    <div id="specWrap" style="display:none;"></div>
+    <div id="voteWrap" style="display:none;">
+      <div class="section-label">Vote for the car — live tally</div>
+      <div class="grid" id="voteGrid"></div>
+    </div>
+
+    <div id="listWrap">
+      <div class="section-label" id="mainLabel">Qualifying cars</div>
+      <div class="grid" id="carGrid"></div>
+      <div id="upgradeWrap" style="display:none;">
+        <div class="section-label" id="upgradeLabel">Upgrade candidates — meet the restriction, not the class at stock</div>
+        <div class="grid" id="upgradeGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Data drawn from Forza Horizon 6's official car list and event list — a manual snapshot, not a live game feed.<br>
+    This page syncs through Firebase. See README.md in this project for the 5-minute setup if votes/spins aren't syncing yet.
+  </footer>
+</div>
+
+<!-- Firebase (compat build — no bundler needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
