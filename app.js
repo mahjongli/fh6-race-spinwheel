@@ -7,7 +7,8 @@ document.getElementById('rosterCount').textContent = CARS.length;
 document.getElementById('raceCount').textContent = RACES.length;
 
 /* ---------------- derive wheel content from real data ---------------- */
-const CLASS_COLORS = { D:'#8b93a3', C:'#5ee06a', B:'#ffd23f', A:'#ff9e2c', S1:'#ff5470', S2:'#c86bff', R:'#00e5c7' };
+const CLASS_COLORS = { D:'#8f8f8f', C:'#ff7a1a', B:'#7c4fe0', A:'#e5323f', S1:'#ff2f92', S2:'#2f7dff', R:'#141414' };
+const CLASS_DARK = { R:true }; // classes dark enough that chips need light text + a border
 const GROUP_COLORS = ['#1c2230','#232833','#1b2530','#26202f','#1f2a26','#2a2320','#20242f'];
 function colorForGroup(name){
   let h = 0; for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
@@ -109,8 +110,11 @@ buildGroupedFilterUI(document.getElementById('restrictFilters'), RESTRICT_ITEMS,
 /* ---------------- reel (slot-machine) build + spin ---------------- */
 const ITEM_H = 62;         // must match .reel-item height in CSS
 const VISIBLE_ROWS = 3;    // must match viewport height / ITEM_H
-const SPIN_MS = 3200;
-const FILLER_COUNT = 22;   // how many "spinning past" items before landing
+const BASE_SPIN_MS = 2500;   // how long the first (race) reel spins
+const STAGGER_MS = 450;      // extra time each subsequent reel keeps spinning
+const REEL_DURATIONS = { race: BASE_SPIN_MS, class: BASE_SPIN_MS + STAGGER_MS, restrict: BASE_SPIN_MS + STAGGER_MS*2 };
+const TOTAL_SPIN_MS = BASE_SPIN_MS + STAGGER_MS*2; // longest reel — used for cross-client timing
+const FILLER_PER_SEC = 8;    // how many items "pass by" per second of spin (keeps speed consistent across staggered durations)
 
 const reels = {
   race:      { viewport: document.getElementById('wheelRace') },
@@ -118,6 +122,55 @@ const reels = {
   restrict:  { viewport: document.getElementById('wheelRestrict') },
 };
 Object.values(reels).forEach(r=>{ r.strip = r.viewport.querySelector('.reel-strip'); });
+
+/* ---- sound: synthesized in Web Audio, no external audio files needed ---- */
+let audioCtx = null;
+let muted = localStorage.getItem('hr_muted') === '1';
+function ensureAudio(){
+  if(!audioCtx){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if(!Ctx) return null;
+    audioCtx = new Ctx();
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function playTick(freq){
+  if(muted) return;
+  const ctx = ensureAudio(); if(!ctx) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = 'square'; osc.frequency.value = freq || (650 + Math.random()*150);
+  gain.gain.setValueAtTime(0.045, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t); osc.stop(t + 0.05);
+}
+function playThunk(){
+  if(muted) return;
+  const ctx = ensureAudio(); if(!ctx) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(190, t);
+  osc.frequency.exponentialRampToValueAtTime(55, t + 0.16);
+  gain.gain.setValueAtTime(0.28, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t); osc.stop(t + 0.22);
+}
+const muteBtn = document.getElementById('muteBtn');
+function refreshMuteBtn(){
+  muteBtn.textContent = muted ? '\uD83D\uDD07 Sound Off' : '\uD83D\uDD0A Sound On';
+  muteBtn.setAttribute('aria-pressed', String(muted));
+}
+muteBtn.addEventListener('click', ()=>{
+  muted = !muted;
+  localStorage.setItem('hr_muted', muted ? '1' : '0');
+  refreshMuteBtn();
+  if(!muted) ensureAudio();
+});
+refreshMuteBtn();
 
 function reelItemHTML(it){
   const sub = it.meta ? it.meta.eventType : (it.group || '');
@@ -139,11 +192,13 @@ function renderStripAtRest(reel, items, idx){
 }
 
 function spinReel(reelKey, items, targetIndex){
+  const durationMs = REEL_DURATIONS[reelKey] || BASE_SPIN_MS;
   return new Promise(resolve=>{
     const reel = reels[reelKey];
     if(items.length===0){ renderStripAtRest(reel, items, 0); resolve(null); return; }
+    const fillerCount = Math.max(6, Math.round(durationMs/1000 * FILLER_PER_SEC));
     const seq = [];
-    for(let i=0;i<FILLER_COUNT;i++){ seq.push(items[Math.floor(Math.random()*items.length)]); }
+    for(let i=0;i<fillerCount;i++){ seq.push(items[Math.floor(Math.random()*items.length)]); }
     seq.push(items[targetIndex]);                       // lands centered
     seq.push(items[Math.floor(Math.random()*items.length)]); // bottom partial peek
 
@@ -155,12 +210,16 @@ function spinReel(reelKey, items, targetIndex){
 
     const finalIndex = seq.length - 2; // the appended target
     const finalY = (finalIndex - 1) * ITEM_H; // -1 so target centers in the highlight row
-    reel.strip.style.transition = `transform ${SPIN_MS}ms cubic-bezier(.12,.72,.1,1)`;
+    reel.strip.style.transition = `transform ${durationMs}ms cubic-bezier(.15,.7,.12,1)`;
     reel.strip.style.transform = `translateY(-${finalY}px)`;
 
+    const tickEvery = Math.max(55, Math.round(durationMs / fillerCount));
+    const tickHandle = setInterval(()=> playTick(), tickEvery);
     setTimeout(()=>{
+      clearInterval(tickHandle);
+      playThunk();
       resolve(items[targetIndex]);
-    }, SPIN_MS);
+    }, durationMs);
   });
 }
 
@@ -258,7 +317,7 @@ function renderCard(c, opts){
   card.innerHTML = `
     <div class="name">${c.name}</div>
     <div class="meta">
-      <span class="chip pi">${c.pi} ${c.cls}</span>
+      <span class="chip pi${CLASS_DARK[c.cls] ? ' dark-chip' : ''}">${c.pi} ${c.cls}</span>
       <span class="chip">${c.make}</span>
       <span class="chip">${c.type}</span>
       <span class="chip">${c.country}</span>
@@ -586,7 +645,7 @@ function connectRoom(roomId){
           myVoteCarKey = null;
           renderSpin(spin, !isFirst);
           subscribeVotes(roomId, spin);
-          setTimeout(()=>{ applyingRemote = false; }, isFirst ? 0 : SPIN_MS + 200);
+          setTimeout(()=>{ applyingRemote = false; }, isFirst ? 0 : TOTAL_SPIN_MS + 200);
         }
       }
     } else {
@@ -634,7 +693,7 @@ spinBtn.addEventListener('click', async ()=>{
   myVoteCarKey = null;
   renderSpin(spinDoc, true);
   if(currentRoomId) subscribeVotes(currentRoomId, spinDoc);
-  setTimeout(()=>{ applyingRemote = false; }, SPIN_MS + 200);
+  setTimeout(()=>{ applyingRemote = false; }, TOTAL_SPIN_MS + 200);
 
   if(db && currentRoomId){
     try{

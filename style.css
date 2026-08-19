@@ -256,6 +256,7 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--cyan); width:14px; h
 .card .meta{ display:flex; flex-wrap:wrap; gap:6px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--sub); }
 .chip{ border:1px solid var(--line); border-radius:6px; padding:2px 7px; }
 .chip.pi{ color:#0a0c10; font-weight:700; background:var(--class-color,var(--cyan)); border:none; }
+.chip.pi.dark-chip{ color:#f2f4f7; border:1px solid rgba(255,255,255,.3); }
 .chip.lock{ color:var(--amber); border-color:rgba(255,177,0,.4); }
 .vote-bar{ margin-top:10px; height:6px; border-radius:4px; background:rgba(255,255,255,.08); overflow:hidden; }
 .vote-bar > span{ display:block; height:100%; background:var(--cyan); }
