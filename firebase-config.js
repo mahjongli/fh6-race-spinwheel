@@ -6,12 +6,12 @@
 // ============================================================
 
 const FIREBASE_CONFIG = {
-  apiKey: "PASTE_YOUR_API_KEY",
-  authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
-  projectId: "PASTE_YOUR_PROJECT_ID",
-  storageBucket: "PASTE_YOUR_PROJECT.appspot.com",
-  messagingSenderId: "PASTE_YOUR_SENDER_ID",
-  appId: "PASTE_YOUR_APP_ID"
+  apiKey: "AIzaSyDSRED5fKdvLJk0xlsH_-uc2so2GxnDAz4",
+  authDomain: "fh6-wheelspin.firebaseapp.com",
+  projectId: "fh6-wheelspin",
+  storageBucket: "fh6-wheelspin.firebasestorage.app",
+  messagingSenderId: "436338309534",
+  appId: "1:436338309534:web:1317453e5a54649ed57e8f"
 };
 
 let db = null;
