@@ -8,8 +8,13 @@ document.getElementById('raceCount').textContent = RACES.length;
 
 /* ---------------- derive wheel content from real data ---------------- */
 const CLASS_COLORS = { D:'#8b93a3', C:'#5ee06a', B:'#ffd23f', A:'#ff9e2c', S1:'#ff5470', S2:'#c86bff', R:'#00e5c7' };
+const GROUP_COLORS = ['#1c2230','#232833','#1b2530','#26202f','#1f2a26','#2a2320','#20242f'];
+function colorForGroup(name){
+  let h = 0; for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
+  return GROUP_COLORS[h % GROUP_COLORS.length];
+}
 
-const RACE_ITEMS = RACES.map((r,i)=>({ id:'race'+i, label:r.name, group:r.eventType, meta:r }));
+const RACE_ITEMS = RACES.map((r,i)=>({ id:'race'+i, label:r.name, group:r.eventType, meta:r, color: colorForGroup(r.eventType) }));
 const CLASS_ITEMS = ['D','C','B','A','S1','S2','R'].map(c=>({ id:'cls'+c, label:c, color:CLASS_COLORS[c] }));
 
 function topBy(field, n){
@@ -26,7 +31,7 @@ fullDecadesPresent.forEach(fd=>{
   const label = "'" + String(fd%100).padStart(2,'0') + 's';
   RESTRICT_DEFS.push({label, field:'decade', value:String(fd%100).padStart(2,'0')+'s', cat:'Decade'});
 });
-const RESTRICT_ITEMS = RESTRICT_DEFS.map((r,i)=>({ id:'res'+i, label:r.label, field:r.field, value:r.value, group:r.cat }));
+const RESTRICT_ITEMS = RESTRICT_DEFS.map((r,i)=>({ id:'res'+i, label:r.label, field:r.field, value:r.value, group:r.cat, color: colorForGroup(r.cat) }));
 
 /* ---------------- filter state ---------------- */
 const raceEnabled = {}; RACE_ITEMS.forEach(r=>raceEnabled[r.id]=true);
@@ -38,7 +43,6 @@ function groupBy(arr, key){
   arr.forEach(it=>{ (out[it[key]] = out[it[key]]||[]).push(it); });
   return out;
 }
-
 function buildGroupedFilterUI(container, items, enabledMap, kind){
   container.innerHTML = '';
   const groups = groupBy(items, 'group');
@@ -102,40 +106,72 @@ buildGroupedFilterUI(document.getElementById('raceFilters'), RACE_ITEMS, raceEna
 buildFlatFilterUI(document.getElementById('classFilters'), CLASS_ITEMS, classEnabled, 'class');
 buildGroupedFilterUI(document.getElementById('restrictFilters'), RESTRICT_ITEMS, restrictEnabled, 'restrict');
 
-/* ---------------- wheel build + spin ---------------- */
-const wheelRace = document.getElementById('wheelRace');
-const wheelClass = document.getElementById('wheelClass');
-const wheelRestrict = document.getElementById('wheelRestrict');
-let activeRace=[], activeClass=[], activeRestrict=[];
-let segRace=0, segClass=0, segRestrict=0;
+/* ---------------- reel (slot-machine) build + spin ---------------- */
+const ITEM_H = 62;         // must match .reel-item height in CSS
+const VISIBLE_ROWS = 3;    // must match viewport height / ITEM_H
+const SPIN_MS = 3200;
+const FILLER_COUNT = 22;   // how many "spinning past" items before landing
 
-function buildWheel(el, items){
-  const n = items.length;
-  if(n===0){ el.style.background = '#1c2028'; [...el.querySelectorAll('.seg-label')].forEach(x=>x.remove()); return 0; }
-  const seg = 360/n;
-  const stops = items.map((it,i)=>{
-    const c = it.color || (i%2===0 ? '#00e5c7' : '#ff2f92');
-    return `${c} ${i*seg}deg ${(i+1)*seg}deg`;
-  }).join(',');
-  el.style.background = `conic-gradient(${stops})`;
-  [...el.querySelectorAll('.seg-label')].forEach(x=>x.remove());
-  items.forEach((it,i)=>{
-    const mid = i*seg + seg/2;
-    const lab = document.createElement('div');
-    lab.className='seg-label';
-    lab.style.transform = `rotate(${mid}deg)`;
-    lab.textContent = it.label;
-    el.appendChild(lab);
-  });
-  return seg;
+const reels = {
+  race:      { viewport: document.getElementById('wheelRace') },
+  class:     { viewport: document.getElementById('wheelClass') },
+  restrict:  { viewport: document.getElementById('wheelRestrict') },
+};
+Object.values(reels).forEach(r=>{ r.strip = r.viewport.querySelector('.reel-strip'); });
+
+function reelItemHTML(it){
+  const sub = it.meta ? it.meta.eventType : (it.group || '');
+  return `<div class="reel-item" style="--slot-color:${it.color||'#232833'}">${it.label}${sub ? '<span class="sub">'+sub+'</span>' : ''}</div>`;
 }
+function renderStripAtRest(reel, items, idx){
+  reel.strip.style.transition = 'none';
+  if(items.length===0){
+    reel.strip.innerHTML = '<div class="reel-item" style="--slot-color:#1c2028;color:var(--sub);">No options enabled</div>'.repeat(VISIBLE_ROWS);
+    reel.strip.style.transform = 'translateY(0px)';
+    return;
+  }
+  const before = items[(idx-1+items.length)%items.length];
+  const current = items[idx];
+  const after = items[(idx+1)%items.length];
+  reel.strip.innerHTML = reelItemHTML(before) + reelItemHTML(current) + reelItemHTML(after);
+  reel.strip.style.transform = `translateY(-${ITEM_H}px)`;
+  requestAnimationFrame(()=>{ reel.strip.style.transition = ''; });
+}
+
+function spinReel(reelKey, items, targetIndex){
+  return new Promise(resolve=>{
+    const reel = reels[reelKey];
+    if(items.length===0){ renderStripAtRest(reel, items, 0); resolve(null); return; }
+    const seq = [];
+    for(let i=0;i<FILLER_COUNT;i++){ seq.push(items[Math.floor(Math.random()*items.length)]); }
+    seq.push(items[targetIndex]);                       // lands centered
+    seq.push(items[Math.floor(Math.random()*items.length)]); // bottom partial peek
+
+    reel.strip.style.transition = 'none';
+    reel.strip.style.transform = 'translateY(0px)';
+    reel.strip.innerHTML = seq.map(reelItemHTML).join('');
+    // force reflow so the transition below actually animates from translateY(0)
+    void reel.strip.offsetHeight;
+
+    const finalIndex = seq.length - 2; // the appended target
+    const finalY = (finalIndex - 1) * ITEM_H; // -1 so target centers in the highlight row
+    reel.strip.style.transition = `transform ${SPIN_MS}ms cubic-bezier(.12,.72,.1,1)`;
+    reel.strip.style.transform = `translateY(-${finalY}px)`;
+
+    setTimeout(()=>{
+      resolve(items[targetIndex]);
+    }, SPIN_MS);
+  });
+}
+
+let activeRace=[], activeClass=[], activeRestrict=[];
 function refreshWheels(){
   activeRace = RACE_ITEMS.filter(r=>raceEnabled[r.id]);
   activeClass = CLASS_ITEMS.filter(c=>classEnabled[c.id]);
   activeRestrict = RESTRICT_ITEMS.filter(r=>restrictEnabled[r.id]);
-  segRace = buildWheel(wheelRace, activeRace);
-  segClass = buildWheel(wheelClass, activeClass);
-  segRestrict = buildWheel(wheelRestrict, activeRestrict);
+  renderStripAtRest(reels.race, activeRace, 0);
+  renderStripAtRest(reels.class, activeClass, 0);
+  renderStripAtRest(reels.restrict, activeRestrict, 0);
   document.getElementById('warnRace').style.display = activeRace.length? 'none':'block';
   document.getElementById('warnClass').style.display = activeClass.length? 'none':'block';
   document.getElementById('warnRestrict').style.display = activeRestrict.length? 'none':'block';
@@ -147,18 +183,6 @@ function refreshWheels(){
 }
 function onFilterChange(){ refreshWheels(); }
 
-function spinWheel(el, items, targetIndex, seg){
-  return new Promise(resolve=>{
-    const spins = 5;
-    const current = (parseFloat(el.dataset.rot)||0);
-    const targetDeg = 360*spins - (targetIndex*seg + seg/2) + (Math.random()*seg*0.4 - seg*0.2);
-    const newRot = current - (current % 360) + targetDeg;
-    el.dataset.rot = newRot;
-    el.style.transform = `rotate(${newRot}deg)`;
-    setTimeout(()=>resolve(items[targetIndex]), 3300);
-  });
-}
-
 /* ---------------- rules UI ---------------- */
 const rEls = {
   noDupMaster: document.getElementById('rNoDupMaster'),
@@ -167,17 +191,15 @@ const rEls = {
   noDupRestrict: document.getElementById('rNoDupRestrict'),
   available: document.getElementById('rAvailable'),
   upgrade: document.getElementById('rUpgrade'),
+  voteDuration: document.getElementById('voteDuration'),
 };
 rEls.noDupMaster.addEventListener('change', ()=>{
   rEls.noDupRace.checked = rEls.noDupClass.checked = rEls.noDupRestrict.checked = rEls.noDupMaster.checked;
 });
-function getCarMode(){
-  return document.querySelector('input[name="carMode"]:checked').value;
-}
+function getCarMode(){ return document.querySelector('input[name="carMode"]:checked').value; }
 
 /* ---------------- car pool + evaluation ---------------- */
 function poolCars(){ return rEls.available.checked ? CARS.filter(c=>c.avail!==false) : CARS; }
-
 function evaluateSpin(spin){
   const cls = CLASS_ITEMS.find(c=>c.id===spin.classId);
   const restrict = RESTRICT_ITEMS.find(r=>r.id===spin.restrictId);
@@ -284,6 +306,7 @@ function renderSpin(spinDoc, animate){
     const voteWrap = document.getElementById('voteWrap');
     const listWrap = document.getElementById('listWrap');
     specWrap.style.display = 'none'; voteWrap.style.display = 'none'; listWrap.style.display = 'none';
+    stopVoteTimer();
 
     const pool = usingUpgradeOnly ? [] : fullMatches;
 
@@ -303,7 +326,8 @@ function renderSpin(spinDoc, animate){
       }
     } else if(carMode === 'vote' && !usingUpgradeOnly){
       voteWrap.style.display = '';
-      renderVotes(spinDoc, pool);
+      renderVotes(spinDoc, pool, {});
+      startVoteTimer(spinDoc, pool);
     } else {
       listWrap.style.display = '';
       const grid = document.getElementById('carGrid');
@@ -342,12 +366,9 @@ function renderSpin(spinDoc, animate){
   };
 
   if(!animate){
-    [wheelRace,wheelClass,wheelRestrict].forEach(el=>{ el.style.transition='none'; });
-    const snap = (el,seg,idx)=>{ if(idx<0) return; el.dataset.rot = 720 - (idx*seg + seg/2); el.style.transform = `rotate(${el.dataset.rot}deg)`; };
-    snap(wheelRace, segRace, raceIdx);
-    snap(wheelClass, segClass, classIdx);
-    snap(wheelRestrict, segRestrict, restrictIdx);
-    requestAnimationFrame(()=>{ [wheelRace,wheelClass,wheelRestrict].forEach(el=>{ el.style.transition=''; }); });
+    renderStripAtRest(reels.race, activeRace, Math.max(raceIdx,0));
+    renderStripAtRest(reels.class, activeClass, Math.max(classIdx,0));
+    renderStripAtRest(reels.restrict, activeRestrict, Math.max(restrictIdx,0));
     finish();
   } else {
     spinBtn.disabled = true;
@@ -356,39 +377,103 @@ function renderSpin(spinDoc, animate){
     document.getElementById('resClass').textContent = '…';
     document.getElementById('resRestrict').textContent = '…';
     const proms = [];
-    if(raceIdx>=0) proms.push(spinWheel(wheelRace, activeRace, raceIdx, segRace));
-    if(classIdx>=0) proms.push(spinWheel(wheelClass, activeClass, classIdx, segClass));
-    if(restrictIdx>=0) proms.push(spinWheel(wheelRestrict, activeRestrict, restrictIdx, segRestrict));
+    proms.push(spinReel('race', activeRace, Math.max(raceIdx,0)));
+    proms.push(spinReel('class', activeClass, Math.max(classIdx,0)));
+    proms.push(spinReel('restrict', activeRestrict, Math.max(restrictIdx,0)));
     Promise.all(proms).then(finish);
   }
 }
 
-/* ---------------- voting ---------------- */
+/* ---------------- voting (with timeout + winner) ---------------- */
 let voteUnsub = null;
 let myVoteCarKey = null;
+let voteTimerHandle = null;
+
+function stopVoteTimer(){
+  if(voteTimerHandle){ clearInterval(voteTimerHandle); voteTimerHandle = null; }
+  document.getElementById('voteTimerWrap').style.display = '';
+  document.getElementById('voteWinner').innerHTML = '';
+}
+
+function startVoteTimer(spinDoc, pool){
+  stopVoteTimer();
+  const durationMs = (spinDoc.voteDurationSec || 20) * 1000;
+  const deadline = spinDoc.ts + durationMs;
+  const bar = document.getElementById('voteTimerBar');
+  const text = document.getElementById('voteTimerText');
+  const wrap = document.getElementById('voteTimerWrap');
+
+  function tick(){
+    const remain = deadline - Date.now();
+    if(remain <= 0){
+      clearInterval(voteTimerHandle); voteTimerHandle = null;
+      bar.style.width = '0%';
+      text.textContent = '0s';
+      wrap.style.display = 'none';
+      closeVoting(spinDoc, pool);
+      return;
+    }
+    const pct = Math.max(0, Math.min(100, remain/durationMs*100));
+    bar.style.width = pct + '%';
+    text.textContent = Math.ceil(remain/1000) + 's';
+  }
+  if(deadline - Date.now() <= 0){
+    // already closed (e.g. a late joiner) — give the vote subscription a
+    // brief moment to deliver real tallies before computing a winner
+    setTimeout(tick, 400);
+  } else {
+    tick();
+    voteTimerHandle = setInterval(tick, 250);
+  }
+}
+
+function closeVoting(spinDoc, pool){
+  const grid = document.getElementById('voteGrid');
+  [...grid.querySelectorAll('.card')].forEach(c=> c.classList.remove('votable'));
+  // determine winner from whatever tally is currently on screen
+  let best = null, bestCount = -1;
+  [...grid.querySelectorAll('.card')].forEach((cardEl, i)=>{
+    const countEl = cardEl.querySelector('.vote-count');
+    const n = countEl ? parseInt(countEl.textContent) || 0 : 0;
+    if(n > bestCount){ bestCount = n; best = pool.slice().sort((a,b)=>b.pi-a.pi)[i]; }
+  });
+  const winnerBox = document.getElementById('voteWinner');
+  if(best){
+    winnerBox.innerHTML = '';
+    const banner = document.createElement('div');
+    banner.className = 'winner-banner';
+    banner.style.setProperty('--class-color', CLASS_COLORS[best.cls]);
+    banner.innerHTML = `<div><div class="k">Voting closed — winner</div><div class="name">${best.name}</div></div>`;
+    winnerBox.appendChild(banner);
+  } else {
+    winnerBox.innerHTML = '<div class="empty">Voting closed — no votes were cast.</div>';
+  }
+}
 
 function renderVotes(spinDoc, pool, tally){
   tally = tally || {};
   const grid = document.getElementById('voteGrid');
   grid.innerHTML = '';
   if(pool.length===0){ grid.innerHTML = '<div class="empty">No qualifying cars to vote on.</div>'; return; }
+  const votingOpen = Date.now() < (spinDoc.ts + (spinDoc.voteDurationSec||20)*1000);
   const totalVotes = Object.values(tally).reduce((a,b)=>a+b,0);
   pool.slice().sort((a,b)=>b.pi-a.pi).forEach(c=>{
     const key = carKey(c);
     const count = tally[key] || 0;
     const pct = totalVotes ? Math.round(count/totalVotes*100) : 0;
     const card = renderCard(c, {
-      votable: true,
+      votable: votingOpen,
       voted: myVoteCarKey === key,
       voteBar: pct,
       voteCount: count,
-      onClick: ()=> castVote(spinDoc, key)
+      onClick: votingOpen ? (()=> castVote(spinDoc, key)) : null
     });
     grid.appendChild(card);
   });
 }
 
 function castVote(spinDoc, carKeyVal){
+  if(Date.now() >= (spinDoc.ts + (spinDoc.voteDurationSec||20)*1000)) return; // closed
   myVoteCarKey = carKeyVal;
   if(!db || !currentRoomId || !spinDoc.roundId) return;
   db.collection('rooms').doc(currentRoomId)
@@ -418,9 +503,29 @@ function subscribeVotes(roomId, spinDoc){
     });
 }
 
+/* ---------------- cleanup of old rounds (avoid permanent buildup) ----------------
+   Best-effort client-side tidy-up of the *previous* round's vote docs whenever a
+   new spin starts. For a full "auto-expire everything" setup, also configure a
+   Firestore TTL policy on the `expiresAt` field for the `rooms` and `rounds`
+   collection groups in the Firebase console (free, native, no code needed) —
+   see README.md. */
+let lastRoundId = null;
+async function cleanupRound(roomId, roundId){
+  if(!db || !roomId || !roundId) return;
+  try{
+    const votesSnap = await db.collection('rooms').doc(roomId)
+      .collection('rounds').doc(String(roundId)).collection('votes').get();
+    const batch = db.batch();
+    votesSnap.forEach(doc=> batch.delete(doc.ref));
+    batch.delete(db.collection('rooms').doc(roomId).collection('rounds').doc(String(roundId)));
+    await batch.commit();
+  }catch(e){ /* best effort only */ }
+}
+
 /* ---------------- room / sync ---------------- */
 const syncDot = document.getElementById('syncDot');
 const syncText = document.getElementById('syncText');
+const joinFeedback = document.getElementById('joinFeedback');
 const roomInput = document.getElementById('roomInput');
 const roomJoinBtn = document.getElementById('roomJoinBtn');
 
@@ -437,25 +542,36 @@ let lastRenderedTs = null;
 let firstSnapshot = true;
 let applyingRemote = false;
 
+function setJoinFeedback(msg, cls){
+  joinFeedback.textContent = msg;
+  joinFeedback.className = 'join-feedback' + (cls ? ' ' + cls : '');
+}
+
 function connectRoom(roomId){
   if(roomUnsub){ roomUnsub(); roomUnsub = null; }
   if(voteUnsub){ voteUnsub(); voteUnsub = null; }
   currentRoomId = roomId;
-  lastRenderedTs = null; firstSnapshot = true;
+  lastRenderedTs = null; firstSnapshot = true; lastRoundId = null;
   localStorage.setItem('hr_room', roomId);
   history.replaceState(null, '', '#' + encodeURIComponent(roomId));
 
   if(!db){
     syncDot.style.background = '#ff5470';
     syncText.textContent = 'Not connected — add Firebase keys (see README.md) to sync with others';
+    setJoinFeedback('Firebase isn\u2019t configured on this deployment yet, so "' + roomId + '" will stay local to your browser only.', 'err');
     return;
   }
   syncDot.style.background = '#3a4150';
   syncText.textContent = 'Connecting to room "' + roomId + '"…';
+  setJoinFeedback('Connecting to room "' + roomId + '"…');
 
   roomUnsub = db.collection('rooms').doc(roomId).onSnapshot(doc=>{
+    const wasFirst = firstSnapshot;
     syncDot.style.background = '#5ee06a';
     syncText.textContent = 'Live in room "' + roomId + '"';
+    if(wasFirst){
+      setJoinFeedback('Joined room "' + roomId + '" \u2014 you\u2019re synced with anyone else using this code.', 'ok');
+    }
     const data = doc.data();
     if(data && data.currentSpin){
       const spin = data.currentSpin;
@@ -463,13 +579,14 @@ function connectRoom(roomId){
         const isFirst = firstSnapshot;
         lastRenderedTs = spin.ts;
         firstSnapshot = false;
+        lastRoundId = spin.roundId;
         lastPick = { raceId: spin.raceId, classId: spin.classId, restrictId: spin.restrictId };
         if(!applyingRemote){
           applyingRemote = true;
           myVoteCarKey = null;
           renderSpin(spin, !isFirst);
           subscribeVotes(roomId, spin);
-          setTimeout(()=>{ applyingRemote = false; }, isFirst ? 0 : 3400);
+          setTimeout(()=>{ applyingRemote = false; }, isFirst ? 0 : SPIN_MS + 200);
         }
       }
     } else {
@@ -478,13 +595,14 @@ function connectRoom(roomId){
   }, err=>{
     syncDot.style.background = '#ff5470';
     syncText.textContent = 'Sync error — check Firestore rules (see README.md)';
+    setJoinFeedback('Couldn\u2019t join "' + roomId + '" \u2014 sync error, check Firestore rules (see README.md).', 'err');
     console.error(err);
   });
 }
 
 roomJoinBtn.addEventListener('click', ()=>{
   const val = (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g,'-').slice(0,24);
-  if(!val) return;
+  if(!val){ setJoinFeedback('Type a room code first.', 'err'); return; }
   connectRoom(val);
 });
 roomInput.addEventListener('keydown', e=>{ if(e.key==='Enter') roomJoinBtn.click(); });
@@ -496,25 +614,32 @@ spinBtn.addEventListener('click', async ()=>{
   const { spin, evalRes, rerolls } = resolveSpin();
   const carMode = getCarMode();
   const roundId = Date.now();
+  const voteDurationSec = Math.max(5, Math.min(120, parseInt(rEls.voteDuration.value)||20));
   const spinDoc = {
     raceId: spin.raceId, classId: spin.classId, restrictId: spin.restrictId,
-    carMode, rerolls, roundId, ts: roundId
+    carMode, rerolls, roundId, ts: roundId, voteDurationSec,
+    expiresAt: db ? firebase.firestore.Timestamp.fromMillis(Date.now() + 24*3600*1000) : null
   };
   if(carMode === 'spec' && evalRes.fullMatches.length>0){
     const pick = evalRes.fullMatches[Math.floor(Math.random()*evalRes.fullMatches.length)];
     spinDoc.specCarKey = carKey(pick);
   }
 
+  const roomToClean = currentRoomId;
+  const roundToClean = lastRoundId;
+
   lastRenderedTs = spinDoc.ts;
+  lastRoundId = spinDoc.roundId;
   applyingRemote = true;
   myVoteCarKey = null;
   renderSpin(spinDoc, true);
   if(currentRoomId) subscribeVotes(currentRoomId, spinDoc);
-  setTimeout(()=>{ applyingRemote = false; }, 3400);
+  setTimeout(()=>{ applyingRemote = false; }, SPIN_MS + 200);
 
   if(db && currentRoomId){
     try{
       await db.collection('rooms').doc(currentRoomId).set({ currentSpin: spinDoc }, { merge:true });
+      if(roundToClean) cleanupRound(roomToClean, roundToClean); // tidy up the previous round, best effort
     }catch(e){
       syncDot.style.background = '#ff5470';
       syncText.textContent = 'Could not sync this spin';
@@ -523,8 +648,15 @@ spinBtn.addEventListener('click', async ()=>{
   }
 });
 
-/* ---------------- boot ---------------- */
+/* ---------------- boot ----------------
+   No auto-join: the room box starts blank and nothing connects until the
+   person explicitly clicks Join/Create (or opens a link with #roomcode). */
 refreshWheels();
-const initialRoom = decodeURIComponent(location.hash.replace('#','')) || localStorage.getItem('hr_room') || 'main';
-roomInput.value = initialRoom;
-connectRoom(initialRoom);
+const hashRoom = decodeURIComponent(location.hash.replace('#',''));
+if(hashRoom){
+  roomInput.value = hashRoom;
+  connectRoom(hashRoom);
+} else {
+  roomInput.value = '';
+  setJoinFeedback('Not in a room yet — spins stay local until you join one.');
+}

@@ -27,27 +27,28 @@
 
   <div class="room-bar">
     <span>Room:</span>
-    <input id="roomInput" type="text" maxlength="24" placeholder="e.g. friday-night">
+    <input id="roomInput" type="text" maxlength="24" placeholder="type a code, e.g. friday-night">
     <button id="roomJoinBtn">Join / Create</button>
     <span class="you">Everyone in the same room sees the same spin &amp; votes.</span>
+    <div class="join-feedback" id="joinFeedback">Not in a room yet — spins stay local until you join one.</div>
   </div>
 
   <div class="rig">
     <div class="dial">
       <span class="label">01 &mdash; Race</span>
-      <div class="wheelbox"><div class="pointer"></div><div class="wheel" id="wheelRace"><div class="hub"></div></div></div>
+      <div class="wheelbox"><div class="reel-viewport" id="wheelRace"><div class="reel-strip"></div><div class="reel-highlight"></div><div class="reel-fade top"></div><div class="reel-fade bottom"></div></div></div>
       <div class="result" id="resRace">&mdash;</div>
       <div class="warn" id="warnRace">All race options are off — enable at least one below.</div>
     </div>
     <div class="dial">
       <span class="label">02 &mdash; Car Class</span>
-      <div class="wheelbox"><div class="pointer"></div><div class="wheel" id="wheelClass"><div class="hub"></div></div></div>
+      <div class="wheelbox"><div class="reel-viewport" id="wheelClass"><div class="reel-strip"></div><div class="reel-highlight"></div><div class="reel-fade top"></div><div class="reel-fade bottom"></div></div></div>
       <div class="result" id="resClass">&mdash;</div>
       <div class="warn" id="warnClass">All classes are off — enable at least one below.</div>
     </div>
     <div class="dial">
       <span class="label">03 &mdash; Restriction</span>
-      <div class="wheelbox"><div class="pointer"></div><div class="wheel" id="wheelRestrict"><div class="hub"></div></div></div>
+      <div class="wheelbox"><div class="reel-viewport" id="wheelRestrict"><div class="reel-strip"></div><div class="reel-highlight"></div><div class="reel-fade top"></div><div class="reel-fade bottom"></div></div></div>
       <div class="result" id="resRestrict">&mdash;</div>
       <div class="warn" id="warnRestrict">All restriction options are off — enable at least one below.</div>
     </div>
@@ -97,6 +98,7 @@
             <label><input type="radio" name="carMode" value="list" checked><span><span class="opt-title">Show the full list</span><span class="opt-sub">Just browse every qualifying car.</span></span></label>
             <label><input type="radio" name="carMode" value="spec"><span><span class="opt-title">Spec racing</span><span class="opt-sub">One random qualifying car is auto-assigned — everyone uses it.</span></span></label>
             <label><input type="radio" name="carMode" value="vote"><span><span class="opt-title">Player vote</span><span class="opt-sub">Everyone in the room votes from the qualifying pool; highest vote wins.</span></span></label>
+            <label style="padding-left:24px;"><span class="opt-sub">Vote timer: <input type="number" id="voteDuration" min="5" max="120" value="20" style="width:52px;background:var(--ink);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:2px 6px;font-family:'JetBrains Mono',monospace;"> seconds</span></label>
           </div>
           <div class="rule-hint">If nothing fully qualifies, the spin automatically rerolls — unless "show upgrade candidates" is on and at least one upgrade candidate exists, in which case it stops and shows those instead.</div>
         </div>
@@ -119,6 +121,12 @@
 
     <div id="specWrap" style="display:none;"></div>
     <div id="voteWrap" style="display:none;">
+      <div id="voteWinner"></div>
+      <div class="vote-timer" id="voteTimerWrap">
+        <span>Voting closes in</span>
+        <div class="bar"><span id="voteTimerBar" style="width:100%;"></span></div>
+        <span class="t" id="voteTimerText">--</span>
+      </div>
       <div class="section-label">Vote for the car — live tally</div>
       <div class="grid" id="voteGrid"></div>
     </div>
