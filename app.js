@@ -111,7 +111,7 @@ buildGroupedFilterUI(document.getElementById('restrictFilters'), RESTRICT_ITEMS,
 const ITEM_H = 62;         // must match .reel-item height in CSS
 const VISIBLE_ROWS = 3;    // must match viewport height / ITEM_H
 const BASE_SPIN_MS = 2500;   // how long the first (race) reel spins
-const STAGGER_MS = 450;      // extra time each subsequent reel keeps spinning
+const STAGGER_MS = 1000;      // extra time each subsequent reel keeps spinning
 const REEL_DURATIONS = { race: BASE_SPIN_MS, class: BASE_SPIN_MS + STAGGER_MS, restrict: BASE_SPIN_MS + STAGGER_MS*2 };
 const TOTAL_SPIN_MS = BASE_SPIN_MS + STAGGER_MS*2; // longest reel — used for cross-client timing
 const FILLER_PER_SEC = 8;    // how many items "pass by" per second of spin (keeps speed consistent across staggered durations)
